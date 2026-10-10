@@ -3,8 +3,6 @@
 [[rule]]
 id       = "noise.firewall"
 kind     = "noise"
-category = "noise"
-severity = "noise"
 title    = "firewall log lines"
 source   = "kernel"
 # a packet logged by netfilter, whatever the prefix: ufw, firewalld, nftables, iptables
@@ -20,8 +18,6 @@ nomatch = "wlan0: Limiting TX power to 23 dBm"
 [[rule]]
 id       = "noise.rtw88-push"
 kind     = "noise"
-category = "noise"
-severity = "noise"
 title    = "rtw88 push errors"
 source   = "kernel"
 message  = 'rtw88_\w+ \S+: failed to pusk skb'
@@ -32,8 +28,6 @@ match = "rtw88_8822ce 0000:01:00.0: failed to pusk skb, ret -28"
 [[rule]]
 id       = "noise.wireless-ext"
 kind     = "noise"
-category = "noise"
-severity = "noise"
 title    = "wireless extensions warnings"
 source   = "kernel"
 message  = 'uses wireless extensions which will stop working'
@@ -44,8 +38,6 @@ match = "warning: `Socket Thread' uses wireless extensions which will stop worki
 [[rule]]
 id       = "noise.wpa-multicast"
 kind     = "noise"
-category = "noise"
-severity = "noise"
 title    = "wpa_supplicant multicast notices"
 source   = "wpa_supplicant"
 message  = 'multicast RX registrations are not supported'

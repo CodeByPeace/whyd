@@ -3,12 +3,16 @@
 package rules
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path"
+	"reflect"
 	"regexp"
 	"regexp/syntax"
 	"slices"
@@ -149,13 +153,41 @@ func Load(sources ...Source) (*Set, error) {
 			}
 			fmt.Fprintf(h, "%s\x00%s\x00", src.Name+"/"+name, data)
 			var f ruleFile
-			if _, err := toml.Decode(string(data), &f); err != nil {
+			var raw struct {
+				Rules []map[string]any `toml:"rule"`
+			}
+			md, err := toml.Decode(string(data), &raw)
+			if err == nil {
+				_, err = toml.Decode(string(data), &f)
+			}
+			if err == nil {
+				for _, k := range md.Undecoded() {
+					if k[0] != "rule" {
+						err = fmt.Errorf("unknown table or field %q: rules go in [[rule]] blocks", k.String())
+						break
+					}
+				}
+			}
+			if err == nil && len(f.Rules) == 0 {
+				err = errors.New("no [[rule]] block")
+			}
+			if err != nil {
 				if err := fail(fmt.Errorf("%s: %w", origin, err)); err != nil {
 					return nil, err
 				}
 				continue
 			}
-			for _, r := range f.Rules {
+			for i, r := range f.Rules {
+				if err := checkKeys(raw.Rules[i]); err != nil {
+					name := r.ID
+					if name == "" {
+						name = fmt.Sprintf("number %d", i+1)
+					}
+					if err := fail(fmt.Errorf("%s: rule %q skipped: %w", origin, name, err)); err != nil {
+						return nil, err
+					}
+					continue
+				}
 				r.file = origin
 				r.Origin = "built-in"
 				if !src.Strict {
@@ -196,7 +228,62 @@ func (s *Set) Rule(id string) *Rule { return s.byID[id] }
 
 func (r *Rule) compile() error {
 	if r.ID == "" {
-		return fmt.Errorf("missing id")
+		return errors.New("missing id")
+	}
+	if r.Title == "" {
+		return errors.New("missing title")
+	}
+	// fields that would have no effect are mistakes: say so instead of ignoring them
+	unused := func(field string, set bool, why string) error {
+		if set {
+			return fmt.Errorf("%s has no effect %s", field, why)
+		}
+		return nil
+	}
+	var err error
+	switch r.Kind {
+	case "match", "noise":
+		err = cmp.Or(
+			unused("start", r.Start != "", "in a "+r.Kind+" rule (it is for kind = \"group\")"),
+			unused("end", r.End != "", "in a "+r.Kind+" rule (it is for kind = \"group\")"),
+			unused("extract", len(r.Extract) > 0, "in a "+r.Kind+" rule: name the groups in message instead"),
+			unused("max_lines", r.MaxLines != 0, "in a "+r.Kind+" rule (it is for kind = \"group\")"),
+			unused("max_seconds", r.MaxSeconds != 0, "in a "+r.Kind+" rule (it is for kind = \"group\")"))
+	case "group":
+		err = unused("message", r.Message != "", "in a group rule: use start and end")
+		if err == nil && (r.MaxLines < 0 || r.MaxSeconds < 0) {
+			err = errors.New("max_lines and max_seconds can't be negative")
+		}
+	case "":
+		return errors.New(`missing kind: "match", "group" or "noise"`)
+	default:
+		return fmt.Errorf(`kind must be "match", "group" or "noise", got %q`, r.Kind)
+	}
+	if err != nil {
+		return err
+	}
+	if r.Kind == "noise" { // hidden and counted: nothing is shown about each occurrence
+		if r.SeverityStr == "" {
+			r.SeverityStr = "noise"
+		}
+		why := "in a noise rule: its lines are only counted"
+		err = cmp.Or(
+			unused("merge", r.Merge != "", why), unused("merge_window", r.MergeWindow != "", why),
+			unused("merge_title", r.MergeTitle != "", why), unused("timeline_only", r.Timeline, why),
+			unused("note", r.Note != "", why), unused("explain", r.Explain != "", why))
+		if err == nil && r.SeverityStr != "noise" {
+			err = fmt.Errorf(`severity must be "noise" in a noise rule (or left out), got %q`, r.SeverityStr)
+		}
+		if err != nil {
+			return err
+		}
+	} else {
+		if r.SeverityStr == "noise" {
+			return errors.New(`severity "noise" is for kind = "noise": to hide lines, make it a noise rule`)
+		}
+		if r.Category == "" {
+			return errors.New(`missing category (a word such as "gpu" or "disk")`)
+		}
 	}
 	sev, err := parseSeverity(r.SeverityStr)
 	if err != nil {
@@ -205,15 +292,20 @@ func (r *Rule) compile() error {
 	r.Severity = sev
 	r.maxPriority = -1
 	if r.Priority != "" {
-		n, err := strconv.Atoi(strings.TrimPrefix(r.Priority, "<="))
-		if err != nil || !strings.HasPrefix(r.Priority, "<=") {
-			return fmt.Errorf("priority must look like \"<=4\", got %q", r.Priority)
+		n, err := strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(r.Priority, "<=")))
+		if err != nil || !strings.HasPrefix(r.Priority, "<=") || n < 0 || n > 7 {
+			return fmt.Errorf(`priority must be "<=N" with N from 0 to 7, such as "<=4" for warnings and worse, got %q`, r.Priority)
 		}
 		r.maxPriority = n
 	}
+	switch r.Merge {
+	case "", "rule":
+	default:
+		return fmt.Errorf(`merge must be "rule" or left out, got %q`, r.Merge)
+	}
 	if r.MergeWindow != "" {
-		if r.window, err = time.ParseDuration(r.MergeWindow); err != nil {
-			return fmt.Errorf("merge_window: %w", err)
+		if r.window, err = time.ParseDuration(r.MergeWindow); err != nil || r.window <= 0 {
+			return fmt.Errorf(`merge_window must be a duration such as "30s", "10m" or "1h", got %q`, r.MergeWindow)
 		}
 	}
 	compile := func(name, expr string) (*regexp.Regexp, error) {
@@ -226,10 +318,7 @@ func (r *Rule) compile() error {
 		}
 		return re, nil
 	}
-	switch r.Kind {
-	case "match", "noise":
-		r.message, err = compile("message", r.Message)
-	case "group":
+	if r.Kind == "group" {
 		if r.start, err = compile("start", r.Start); err == nil {
 			r.end, err = compile("end", r.End)
 		}
@@ -239,8 +328,8 @@ func (r *Rule) compile() error {
 		if r.MaxSeconds == 0 {
 			r.MaxSeconds = 60
 		}
-	default:
-		err = fmt.Errorf("kind must be match, group or noise, got %q", r.Kind)
+	} else {
+		r.message, err = compile("message", r.Message)
 	}
 	if err != nil {
 		return err
@@ -253,7 +342,111 @@ func (r *Rule) compile() error {
 		}
 		r.extract = append(r.extract, re)
 	}
+	if err := r.checkTemplates(); err != nil {
+		return err
+	}
+	for _, ex := range r.Examples {
+		if (ex.Match == "") == (ex.NoMatch == "") {
+			return errors.New("each [[rule.example]] needs either match or nomatch")
+		}
+	}
 	return nil
+}
+
+// checkTemplates makes sure every {name} in title, note and merge_title is a field the rule
+// fills: a named group of its patterns, {source}, and {count} in merge_title.
+func (r *Rule) checkTemplates() error {
+	names := map[string]bool{"source": true}
+	for _, re := range append([]*regexp.Regexp{r.message, r.start, r.end}, r.extract...) {
+		if re != nil {
+			for _, n := range re.SubexpNames() {
+				names[n] = n != ""
+			}
+		}
+	}
+	for _, t := range []struct{ field, text string }{{"title", r.Title}, {"note", r.Note}, {"merge_title", r.MergeTitle}} {
+		for _, m := range placeholder.FindAllStringSubmatch(t.text, -1) {
+			if !names[m[1]] && !(m[1] == "count" && t.field == "merge_title") {
+				if hint := suggest(m[1], names); hint != "" {
+					return fmt.Errorf("%s uses {%s}, but no pattern has a group named %s%s", t.field, m[1], m[1], hint)
+				}
+				return fmt.Errorf("%s uses {%s}, but no pattern has a group named %s: write (?P<%s>...) in the pattern", t.field, m[1], m[1], m[1])
+			}
+		}
+	}
+	return nil
+}
+
+// checkKeys reports the fields of a [[rule]] (or of its examples) that whyd doesn't know:
+// most often a typo, which would otherwise silently change what the rule does.
+func checkKeys(rule map[string]any) error {
+	var bad []string
+	for _, k := range slices.Sorted(maps.Keys(rule)) {
+		if !ruleFields[k] {
+			bad = append(bad, fmt.Sprintf("%q%s", k, suggest(k, ruleFields)))
+		}
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("unknown field %s", strings.Join(bad, "; unknown field "))
+	}
+	exs, _ := rule["example"].([]map[string]any)
+	for _, ex := range exs {
+		for ek := range ex {
+			if ek != "match" && ek != "nomatch" {
+				return fmt.Errorf("unknown field %q in [[rule.example]]: only match and nomatch", ek)
+			}
+		}
+	}
+	return nil
+}
+
+// ruleFields are the TOML fields of a rule, from the struct tags.
+var ruleFields = func() map[string]bool {
+	out := map[string]bool{}
+	t := reflect.TypeFor[Rule]()
+	for i := range t.NumField() {
+		if tag := t.Field(i).Tag.Get("toml"); tag != "" {
+			out[tag] = true
+		}
+	}
+	return out
+}()
+
+// suggest names the known name closest to a misspelt one: ", did you mean "source"?".
+func suggest(k string, known map[string]bool) string {
+	best, dist := "", 3 // at most two edits away
+	for f, ok := range known {
+		if !ok {
+			continue
+		}
+		if d := editDistance(k, f); d < dist || d == dist && f < best {
+			best, dist = f, d
+		}
+	}
+	if best == "" {
+		return ""
+	}
+	return fmt.Sprintf(", did you mean %q?", best)
+}
+
+func editDistance(a, b string) int {
+	prev := make([]int, len(b)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		cur := make([]int, len(b)+1)
+		cur[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
+		}
+		prev = cur
+	}
+	return prev[len(b)]
 }
 
 // applies tells whether the rule looks at this kind of line at all.

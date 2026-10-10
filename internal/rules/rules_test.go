@@ -146,3 +146,53 @@ match = "Out of memory: Killed process 1 (x)"
 		t.Errorf("fails %q", fails)
 	}
 }
+
+// A mistake in a rule is reported with what to write instead, never silently ignored.
+func TestRuleMistakes(t *testing.T) {
+	base := "id = \"mine.x\"\nkind = \"match\"\ncategory = \"x\"\nseverity = \"warning\"\ntitle = \"x\"\nmessage = 'x'\n"
+	cases := map[string]string{
+		"sorce = \"kernel\"":               `unknown field "sorce", did you mean "source"?`,
+		"merge = \"rules\"":                `merge must be "rule" or left out`,
+		"priority = \"<=12\"":              `priority must be "<=N" with N from 0 to 7`,
+		"priority = \"4\"":                 `priority must be "<=N"`,
+		"extract = ['(?P<a>x)']":           "extract has no effect in a match rule",
+		"start = 'x'":                      "start has no effect in a match rule",
+		"merge_window = \"10 minutes\"":    "merge_window must be a duration",
+		"note = \"{proc}\"":                "note uses {proc}, but no pattern has a group named proc",
+		"merge_title = \"{count} times\"":  "",
+		"[[rule.example]]\nmtch = \"x\"":   `unknown field "mtch" in [[rule.example]]`,
+		"[[rule.example]]\nnomatch = \"\"": "each [[rule.example]] needs either match or nomatch",
+		"severity = \"noise\"\n#":          `severity "noise" is for kind = "noise"`,
+	}
+	for extra, want := range cases {
+		text := base + extra
+		if strings.HasPrefix(extra, "severity") { // replace, not add
+			text = strings.Replace(base, "severity = \"warning\"\n", "", 1) + extra
+		}
+		s, err := Load(Source{Name: "u", FS: fstest.MapFS{"r.toml": {Data: []byte("[[rule]]\n" + text)}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := strings.Join(s.Problems, "\n")
+		if want == "" && got != "" || want != "" && !strings.Contains(got, want) {
+			t.Errorf("%s\n got %q\nwant %q", extra, got, want)
+		}
+	}
+	for text, want := range map[string]string{
+		"id = \"g\"\nkind = \"group\"\ncategory = \"x\"\nseverity = \"info\"\ntitle = \"g\"\nstart = 'a'":   "missing end",
+		"id = \"g\"\nkind = \"group\"\ncategory = \"x\"\nseverity = \"info\"\ntitle = \"g\"\nmessage = 'a'": "message has no effect in a group rule",
+		"id = \"n\"\nkind = \"noise\"\ntitle = \"n\"\nmessage = 'a'\nseverity = \"info\"":                   `severity must be "noise" in a noise rule`,
+		"id = \"n\"\nkind = \"noise\"\ntitle = \"n\"\nmessage = 'a'":                                        "",
+		"id = \"m\"\nkind = \"match\"\nseverity = \"info\"\ntitle = \"m\"\nmessage = 'a'":                   "missing category",
+		"id = \"m\"\ncategory = \"x\"\nseverity = \"info\"\ntitle = \"m\"\nmessage = 'a'":                   "missing kind",
+	} {
+		s, err := Load(Source{Name: "u", FS: fstest.MapFS{"r.toml": {Data: []byte("[[rule]]\n" + text)}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := strings.Join(s.Problems, "\n")
+		if want == "" && got != "" || want != "" && !strings.Contains(got, want) {
+			t.Errorf("%s\n got %q\nwant %q", text, got, want)
+		}
+	}
+}

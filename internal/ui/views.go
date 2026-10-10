@@ -322,7 +322,7 @@ func (m *model) unknownView() string {
 			level, st = "err", stRedB
 		}
 		head := st.Render(pad(level, 7)) + stDim.Render(pad(fmt.Sprint(g.Count), 7)) + pad(report.Within(g.First, res.Boot.Last), 11) +
-			stCyan.Render(pad(g.Source, 16))
+			stCyan.Render(pad(g.Source, 15)) + " "
 		items = append(items, item{head + g.Message, level + " " + g.Source + " " + g.Message, 41, 0})
 	}
 	header := pad("LEVEL", 7) + pad("TIMES", 7) + pad("FIRST", 11) + pad("SOURCE", 16) + "MESSAGE"
