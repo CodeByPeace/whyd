@@ -1,0 +1,53 @@
+name: whyd got it wrong
+description: The verdict is wrong, or whyd missed (or invented) a problem in a session.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks: a session whyd gets wrong is the best way to make it right for everyone.
+  - type: textarea
+    id: what
+    attributes:
+      label: What whyd says, and what really happened
+      placeholder: |
+        whyd says "power-off at 22:48", but the screen froze and I held the power button.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: The report
+      description: |
+        Run `whyd report -b N` for that session (N as in `whyd list`) and paste the output.
+        It is redacted, but read it before posting.
+      render: markdown
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: whyd version
+      description: "`whyd --version`"
+      placeholder: whyd 0.1.1
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distribution and kernel
+      placeholder: Arch Linux, 7.2.9-arch1-1
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        If you can, attach the journal of that session: it becomes a test, so the problem
+        stays fixed. Record it with
+
+        ```
+        journalctl -b N -o json --all --output-fields=MESSAGE,PRIORITY,SYSLOG_IDENTIFIER,_COMM,_PID,_SYSTEMD_UNIT,_TRANSPORT,_BOOT_ID | gzip > boot.jsonl.gz
+        ```
+
+        A journal holds user names, host names, network names and addresses: check what is
+        inside before attaching it, or don't attach it.

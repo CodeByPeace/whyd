@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How to write a rule
+    url: https://github.com/vmaltarello/whyd/blob/main/docs/RULES.md
+    about: Teach whyd a message of your own hardware, step by step.
+  - name: Report a privacy or security problem
+    url: https://github.com/vmaltarello/whyd/security/advisories/new
+    about: A report that leaks personal data, privately. Please don't open a public issue for it.

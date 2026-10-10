@@ -1,0 +1,27 @@
+name: Bug in whyd
+description: whyd crashes, shows something broken, or a command doesn't do what it says.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what whyd did instead. Error messages as text, please.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: whyd version
+      description: "`whyd --version`"
+      placeholder: whyd 0.1.1
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distribution, systemd version and terminal
+      description: "`systemctl --version` prints the systemd version on its first line."
+      placeholder: Arch Linux, systemd 258, kitty
+    validations:
+      required: true

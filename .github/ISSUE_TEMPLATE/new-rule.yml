@@ -1,0 +1,45 @@
+name: A message whyd should recognise
+description: A line from your journal that whyd lists as not recognised, or shows with the wrong level or explanation.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Press `W` in whyd to see the lines no rule recognises. You can also write the rule
+        yourself: the [rules guide](https://github.com/vmaltarello/whyd/blob/main/docs/RULES.md)
+        shows how, step by step, and a pull request with the rule is very welcome.
+  - type: textarea
+    id: line
+    attributes:
+      label: The line
+      description: Copied from the journal, as it is. Replace anything personal (names, addresses).
+      render: text
+      placeholder: "cfg80211: Process '/usr/bin/set-wireless-regdom' failed with exit code 1."
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source
+      description: The SOURCE column in whyd (`W`), such as `kernel`, `systemd` or `(udev-worker)`.
+    validations:
+      required: true
+  - type: textarea
+    id: meaning
+    attributes:
+      label: What it means, as far as you know
+      description: What happened when it was logged, and whether it mattered. Links to documentation or bug reports help.
+    validations:
+      required: true
+  - type: dropdown
+    id: level
+    attributes:
+      label: How serious is it?
+      options:
+        - err (it can explain a crash or a freeze by itself)
+        - warn (worth a look)
+        - info (context, or a known harmless message)
+        - noise (harmless and so frequent it should be hidden)
+        - I don't know
+    validations:
+      required: true
