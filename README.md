@@ -1,7 +1,22 @@
-# whyd
+<div align="center">
 
-**Why did my PC stop?** whyd reads the journal of the previous boot and tells you, in one
-screen, how it ended and what went wrong before.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo/logo-dark.svg">
+  <img src="docs/logo/logo-light.svg" alt="whyd" height="96">
+</picture>
+
+**Why did my PC stop?**
+
+[![Release](https://img.shields.io/github/v/release/vmaltarello/whyd?style=flat-square&logo=git&logoColor=white)](https://github.com/vmaltarello/whyd/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/vmaltarello/whyd/ci.yml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=CI)](https://github.com/vmaltarello/whyd/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/github/go-mod/go-version/vmaltarello/whyd?style=flat-square&logo=go&logoColor=white&color=00ADD8)](go.mod)
+[![License](https://img.shields.io/github/license/vmaltarello/whyd?style=flat-square&color=blue)](LICENSE)
+[![Linux](https://img.shields.io/badge/Linux-systemd-30D475?style=flat-square&logo=linux&logoColor=white)](#install)
+
+</div>
+
+whyd reads the journal of the previous boot and tells you, in one screen, how it ended and
+what went wrong before.
 
 ![whyd: the sessions on the left, the selected one and its problems on the right](docs/screenshots/main.png)
 
